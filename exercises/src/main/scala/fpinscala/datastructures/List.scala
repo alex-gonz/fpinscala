@@ -62,7 +62,70 @@ object List { // `List` companion object. Contains functions for creating and wo
 
   def length[A](l: List[A]): Int = sys.error("todo")
 
-  def foldLeft[A,B](l: List[A], z: B)(f: (B, A) => B): B = sys.error("todo")
+  @annotation.tailrec
+  def foldLeft[A,B](l: List[A], z: B)(f: (B, A) => B): B = {
+    l match {
+      case Nil => z
+      case Cons(x, xs) => foldLeft(l, f(z, x))(f)
+    }
+  }
 
-  def map[A,B](l: List[A])(f: A => B): List[B] = sys.error("todo")
+  def addOne(l: List[Int]): List[Int] = {
+    foldRight[Int, List[Int]](l, Nil)((a, b) => Cons(a+1, b))
+  }
+
+  def doubleToString(l: List[Double]): List[String] = {
+    foldRight[Double, List[String]](l, Nil)((a, b) => Cons(a.toString, b))
+  }
+
+  def map[A,B](l: List[A])(f: A => B): List[B] = {
+    foldRight[A, List[B]](l, Nil)((a, b) => Cons(f(a), b))
+  }
+
+  def filter[A](l: List[A])(f: A => Boolean): List[A] = {
+    foldRight[A, List[A]](l, Nil)((a, b) => if (f(a)) Cons(a, b) else b)
+  }
+
+  def flatMap[A,B](l: List[A])(f: A => List[B]): List[B] = {
+    foldRight[A, List[B]](l, Nil)((a, bs) => append(f(a), bs))
+//    foldRight[A,List[B]](l, Nil)((a, bs) => foldRight[B,List[B]](f(a), bs)((b,bs) => Cons(b,bs)))
+  }
+
+  def filterUsingFlatMap[A](l: List[A])(f: A => Boolean): List[A] = {
+    flatMap[A,A](l)(a => if (f(a)) List(a) else Nil)
+  }
+
+  def zipAdd(l1: List[Int], l2: List[Int]): List[Int] = {
+    (l1, l2) match {
+      case (Nil, Nil) => Nil
+      case (Nil, Cons(x, xs)) => Cons(x, xs)
+      case (Cons(x, xs), Nil) => Cons(x, xs)
+      case (Cons(x, xs), Cons(y, ys)) => Cons(x + y, zipAdd(xs, ys))
+    }
+  }
+
+  def combine[A](l1: List[A], l2: List[A])(f: (A,A) => A): List[A] = {
+    (l1, l2) match {
+      case (Nil, Nil) => Nil
+      case (Nil, Cons(x, xs)) => Cons(x, xs)
+      case (Cons(x, xs), Nil) => Cons(x, xs)
+      case (Cons(x, xs), Cons(y, ys)) => Cons(f(x, y), combine(xs, ys)(f))
+    }
+  }
+
+  def hasSubsequence[A](l: List[A], sub: List[A]): Boolean = {
+    (l, sub) match {
+      case (Nil, _) => false
+      case (Cons(_, xs), Cons(_, ys)) => firstAreEqual(l, sub) || hasSubsequence(xs, ys)
+    }
+  }
+
+  def firstAreEqual[A](l: List[A], sub: List[A]): Boolean = {
+    (l, sub) match {
+      case (_, Nil) => true
+      case (Nil, _) => false
+      case (Cons(x, xs), Cons(y, ys)) if x == y => firstAreEqual(xs, ys)
+      case _ => false
+    }
+  }
 }
