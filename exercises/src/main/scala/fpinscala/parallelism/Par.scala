@@ -45,6 +45,14 @@ object Par {
       if (run(es)(cond).get) t(es) // Notice we are blocking on the result of `cond`.
       else f(es)
 
+  def asyncF[A,B](f: A => B): A => Par[B] = a => fork(unit(f(a)))
+
+  def sequence[A](ps: List[Par[A]]): Par[List[A]] =
+    ps.foldLeft[Par[List[A]]](unit(Nil))((parList, p) => map2(parList, p)((list, i) => i :: list))
+
+  def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] =
+    map(sequence(as.map(a => fork(unit(List(a).filter(f))))))(_.flatten)
+
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
