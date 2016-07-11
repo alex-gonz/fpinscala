@@ -45,6 +45,23 @@ object Par {
       if (run(es)(cond).get) t(es) // Notice we are blocking on the result of `cond`.
       else f(es)
 
+  def choiceN[A](n: Par[Int])(choices: List[Par[A]]): Par[A] = es => choices(run(es)(n).get)(es)
+
+  def choiceViaChoiceN[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
+    choiceN(map(cond)(p => if (p) 0 else 1))(List(t, f))
+
+  def chooser[A,B](pa: Par[A])(choices: A => Par[B]): Par[B] = es => choices(run(es)(pa).get)(es)
+
+  def choiceViaChooser[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] = chooser(cond)(p => if (p) t else f)
+
+  def choiceNViaChooser[A](n: Par[Int])(choices: List[Par[A]]): Par[A] = chooser(n)(n => choices(n))
+
+  def join[A](a: Par[Par[A]]): Par[A] = es => run(es)(run(es)(a).get())
+
+  def flatMapWithJoin[A,B](pa: Par[A])(choices: A => Par[B]): Par[B] = join(map(pa)(choices))
+
+  def joinWithFlatMap[A](a: Par[Par[A]]): Par[A] = chooser(a)(identity)
+
   def asyncF[A,B](f: A => B): A => Par[B] = a => fork(unit(f(a)))
 
   def sequence[A](ps: List[Par[A]]): Par[List[A]] =
