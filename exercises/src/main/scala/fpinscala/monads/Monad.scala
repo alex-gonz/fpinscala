@@ -36,11 +36,18 @@ trait Monad[M[_]] extends Functor[M] {
   def map2[A,B,C](ma: M[A], mb: M[B])(f: (A, B) => C): M[C] =
     flatMap(ma)(a => map(mb)(b => f(a, b)))
 
-  def sequence[A](lma: List[M[A]]): M[List[A]] = ???
+  def sequence[A](lma: List[M[A]]): M[List[A]] =
+    lma.foldLeft[M[List[A]]](unit(Nil))((mList, ma) => flatMap(mList)(list => map(ma)(_ :: list)))
 
-  def traverse[A,B](la: List[A])(f: A => M[B]): M[List[B]] = ???
+  def traverse[A,B](la: List[A])(f: A => M[B]): M[List[B]] =
+    la.foldLeft[M[List[B]]](unit(Nil))((mList, a) => flatMap(mList)(list => map(f(a))(_ :: list)))
+    //sequence(la.map(f))
 
-  def replicateM[A](n: Int, ma: M[A]): M[List[A]] = ???
+  // Generates a list of the value wrapped by the given monad
+  def replicateM[A](n: Int, ma: M[A]): M[List[A]] = map(ma)(a => List.fill(n)(a))
+
+  def filterM[A](ms: List[A])(f: A => M[Boolean]): M[List[A]] =
+    ms.foldLeft[M[List[A]]](unit(Nil))((mList, a) => flatMap(f(a))(bool => if (bool) map(mList)(a :: _) else mList))
 
   def compose[A,B,C](f: A => M[B], g: B => M[C]): A => M[C] = ???
 
@@ -62,15 +69,39 @@ object Monad {
       ma flatMap f
   }
 
-  val parMonad: Monad[Par] = ???
+  val parMonad: Monad[Par] = new Monad[Par] {
+    override def flatMap[A, B](ma: Par[A])(f: (A) => Par[B]): Par[B] = Par.chooser(ma)(f)
 
-  def parserMonad[P[+_]](p: Parsers[P]): Monad[P] = ???
+    override def unit[A](a: => A): Par[A] = Par.unit(a)
+  }
 
-  val optionMonad: Monad[Option] = ???
+  // Skipped the chapter
+  def parserMonad[P[+_]](p: Parsers[P]): Monad[P] = new Monad[P] {
+    override def flatMap[A, B](ma: P[A])(f: (A) => P[B]): P[B] = ???
 
-  val streamMonad: Monad[Stream] = ???
+    override def unit[A](a: => A): P[A] = ???
+  }
 
-  val listMonad: Monad[List] = ???
+  val optionMonad: Monad[Option] = new Monad[Option] {
+    override def flatMap[A, B](ma: Option[A])(f: (A) => Option[B]): Option[B] = ma flatMap f
+
+    override def unit[A](a: => A): Option[A] = Some(a)
+  }
+
+  val streamMonad: Monad[Stream] = new Monad[Stream] {
+    override def flatMap[A, B](ma: Stream[A])(f: (A) => Stream[B]): Stream[B] = ma.flatMap(f)
+
+    override def unit[A](a: => A): Stream[A] = Stream(a)
+  }
+
+  val listMonad: Monad[List] = new Monad[List] {
+    override def flatMap[A, B](ma: List[A])(f: (A) => List[B]): List[B] = ma flatMap f
+
+    override def unit[A](a: => A): List[A] = List(a)
+  }
+
+  // Can't be done since it takes in 2 different types
+  // Could maybe fix by making output type not a part of state?
 
   def stateMonad[S] = ???
 
