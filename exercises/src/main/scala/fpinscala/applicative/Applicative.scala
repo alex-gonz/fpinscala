@@ -11,24 +11,39 @@ import language.implicitConversions
 
 trait Applicative[F[_]] extends Functor[F] {
 
-  def map2[A,B,C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C] = ???
+  def map2[A, B, C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C] = apply(apply(unit[A => B => C](f.curried))(fa))(fb)
 
-  def apply[A,B](fab: F[A => B])(fa: F[A]): F[B] = ???
+  def apply[A, B](fab: F[A => B])(fa: F[A]): F[B] = map2(fa, fab)((a, ab) => ab(a))
 
   def unit[A](a: => A): F[A]
 
-  def map[A,B](fa: F[A])(f: A => B): F[B] =
-    apply(unit(f))(fa)
+  def map[A, B](fa: F[A])(f: A => B): F[B] = apply[A, B](unit(f))(fa)
 
-  def sequence[A](fas: List[F[A]]): F[List[A]] = ???
+  def sequence[A](fas: List[F[A]]): F[List[A]] = traverse(fas)(identity)
 
-  def traverse[A,B](as: List[A])(f: A => F[B]): F[List[B]] = ???
+  def traverse[A, B](as: List[A])(f: A => F[B]): F[List[B]] = as.foldRight(unit(List[B]()))((a, flist) => map2(f(a), flist)(_ :: _))
+
+  def map3[A,B,C,D](fa: F[A],
+                    fb: F[B],
+                    fc: F[C])(f: (A, B, C) => D): F[D] = apply(apply(apply(unit[A => B => C => D](f.curried))(fa))(fb))(fc)
+
+  def map4[A,B,C,D,E](fa: F[A],
+                      fb: F[B],
+                      fc: F[C],
+                      fd: F[D])(f: (A, B, C, D) => E): F[E] = apply(apply(apply(apply(unit[A => B => C => D => E](f.curried))(fa))(fb))(fc))(fd)
 
   def replicateM[A](n: Int, fa: F[A]): F[List[A]] = ???
 
-  def factor[A,B](fa: F[A], fb: F[B]): F[(A,B)] = ???
+  def factor[A, B](fa: F[A], fb: F[B]): F[(A, B)] = ???
 
-  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = ???
+  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = {
+    val F = this
+    new Applicative[({type f[x] = (F[x], G[x])})#f] {
+      override def unit[A](a: => A): (F[A], G[A]) = (F.unit(a), G.unit(a))
+
+      override def map[A, B](fa: (F[A], G[A]))(f: (A) => B): (F[B], G[B]) = (F.map(fa._1)(f), G.map(fa._2)(f))
+    }
+  }
 
   def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = ???
 
@@ -50,7 +65,14 @@ trait Monad[F[_]] extends Applicative[F] {
 }
 
 object Monad {
-  def eitherMonad[E]: Monad[({type f[x] = Either[E, x]})#f] = ???
+  def eitherMonad[E]: Monad[({type f[x] = Either[E, x]})#f] = new Monad[({type f[x] = Either[E, x]})#f] {
+    override def unit[A](a: => A): Either[E, A] = Right(a)
+
+    override def flatMap[A,B](em: Either[E, A])(f: A => Either[E, B]): Either[E, B] = em match {
+      case Right(a) => f(a)
+      case _ => _
+    }
+  }
 
   def stateMonad[S] = new Monad[({type f[x] = State[S, x]})#f] {
     def unit[A](a: => A): State[S, A] = State(s => (a, s))
@@ -71,7 +93,7 @@ case class Success[A](a: A) extends Validation[Nothing, A]
 
 
 object Applicative {
-
+  // meaning of sequence is a group of elements at that pos in each stream. Basically the same as mapN
   val streamApplicative = new Applicative[Stream] {
 
     def unit[A](a: => A): Stream[A] =
@@ -82,7 +104,17 @@ object Applicative {
       a zip b map f.tupled
   }
 
-  def validationApplicative[E]: Applicative[({type f[x] = Validation[E,x]})#f] = ???
+  def validationApplicative[E]: Applicative[({type f[x] = Validation[E,x]})#f] = new Applicative[({type f[x] = Validation[E, x]})#f] {
+    override def unit[A](a: => A): Validation[E, A] = Success(a)
+
+    override def map2[A, B, C](fa: Validation[E, A], fb: Validation[E, B])(f: (A, B) => C): Validation[E, C] =
+      (fa, fb) match {
+        case (Success(a), Success(b)) => Success(f(a,b))
+        case (Failure(h1, t1), Failure(h2, t2)) => Failure(h1, t1 ++ (h2 +: t2))
+        case (f: Failure[E], _) => f
+        case (_, f: Failure[E]) => f
+      }
+  }
 
   type Const[A, B] = A
 
